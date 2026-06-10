@@ -1,0 +1,1240 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AIがネットワークの"渋滞"を解消する</title>
+  <!-- Reveal.js CDN -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/5.1.0/reveal.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/5.1.0/theme/black.min.css">
+  <!-- D3.js CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #0a0e27;
+      --text-white: #ffffff;
+      --accent-cyan: #00d4ff;
+      --accent-magenta: #ff006e;
+      --node-blue: #4fc3f7;
+      --link-low: #00e676;
+      --link-high: #ff1744;
+    }
+
+    .reveal {
+      font-family: 'Noto Sans JP', sans-serif;
+      font-size: 24px;
+      color: var(--text-white);
+    }
+
+    .reveal .slides {
+      text-align: left;
+    }
+
+    .reveal .slides section {
+      background: var(--bg-dark);
+      padding: 40px;
+      box-sizing: border-box;
+      height: 100%;
+    }
+
+    .reveal h1, .reveal h2, .reveal h3 {
+      font-family: 'Noto Sans JP', sans-serif;
+      font-weight: 700;
+      color: var(--text-white);
+      text-transform: none;
+    }
+
+    .reveal h1 { font-size: 48px; }
+    .reveal h2 { font-size: 36px; }
+    .reveal h3 { font-size: 28px; }
+
+    .reveal .slide-subtitle {
+      font-size: 24px;
+      color: var(--accent-cyan);
+      margin-top: 10px;
+    }
+
+    .reveal .slide-author {
+      font-size: 20px;
+      color: #aaa;
+      margin-top: 30px;
+    }
+
+    .label-text {
+      font-family: 'Noto Sans JP', sans-serif;
+      font-size: 16px;
+      font-weight: 300;
+    }
+
+    /* Slide 1 - Title */
+    .title-slide {
+      display: flex !important;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .title-slide h1 {
+      animation: fadeInUp 1.2s ease-in-out;
+    }
+
+    .title-slide .slide-subtitle {
+      animation: fadeInUp 1.2s ease-in-out 0.3s both;
+    }
+
+    .title-slide .slide-author {
+      animation: fadeInUp 1.2s ease-in-out 0.6s both;
+    }
+
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(30px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 0.3; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(1.08); }
+    }
+
+    .bg-network { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; }
+    .bg-network circle { animation: pulse 3s ease-in-out infinite; }
+    .bg-network line { stroke: #1a2040; stroke-width: 1; }
+    .title-content { position: relative; z-index: 1; }
+
+    /* Buttons */
+    .demo-btn {
+      font-family: 'Noto Sans JP', sans-serif;
+      font-size: 18px;
+      font-weight: 700;
+      padding: 12px 28px;
+      border: 2px solid var(--accent-cyan);
+      background: rgba(0, 212, 255, 0.1);
+      color: var(--accent-cyan);
+      cursor: pointer;
+      border-radius: 8px;
+      transition: all 0.3s ease;
+      min-width: 44px;
+      min-height: 44px;
+    }
+
+    .demo-btn:hover {
+      background: rgba(0, 212, 255, 0.3);
+    }
+
+    .demo-btn.active {
+      background: var(--accent-cyan);
+      color: var(--bg-dark);
+    }
+
+    .demo-btn.accent {
+      border-color: var(--accent-magenta);
+      background: rgba(255, 0, 110, 0.1);
+      color: var(--accent-magenta);
+    }
+
+    .demo-btn.accent:hover {
+      background: rgba(255, 0, 110, 0.3);
+    }
+
+    .demo-btn.accent.active {
+      background: var(--accent-magenta);
+      color: var(--text-white);
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      margin: 10px 0;
+      flex-wrap: wrap;
+    }
+
+    /* Meter */
+    .meter-container {
+      width: 100%;
+      margin: 10px 0;
+      text-align: center;
+    }
+
+    .meter-label {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 5px;
+    }
+
+    /* Step description */
+    .step-description {
+      font-size: 20px;
+      color: #ccc;
+      text-align: center;
+      padding: 10px 20px;
+      min-height: 50px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 8px;
+      margin: 8px 0;
+      line-height: 1.6;
+    }
+
+    /* Slide content layout */
+    .slide-intro {
+      font-size: 22px;
+      line-height: 1.7;
+      margin-bottom: 10px;
+      text-align: center;
+    }
+
+    .slide-intro strong {
+      color: var(--accent-cyan);
+    }
+
+    .slide-intro .highlight {
+      color: var(--accent-magenta);
+      font-weight: 700;
+    }
+
+    /* Hover hint */
+    .hover-hint {
+      font-size: 16px;
+      color: #888;
+      text-align: center;
+      font-weight: 300;
+    }
+
+    /* Slide 5 */
+    .result-message {
+      font-size: 28px;
+      font-weight: 700;
+      text-align: center;
+      color: var(--accent-cyan);
+      margin: 10px 0;
+    }
+
+    .result-comparison {
+      font-size: 22px;
+      text-align: center;
+      line-height: 1.8;
+      margin: 10px 0;
+    }
+
+    .result-closing {
+      font-size: 22px;
+      text-align: center;
+      color: var(--accent-magenta);
+      font-weight: 700;
+      margin-top: 15px;
+    }
+
+    /* Pulsing animation for overloaded links */
+    @keyframes linkPulse {
+      0%, 100% { stroke-width: var(--base-width); }
+      50% { stroke-width: calc(var(--base-width) + 4px); }
+    }
+
+    .link-overloaded {
+      animation: linkPulse 1s ease-in-out infinite;
+    }
+
+    /* Completion highlight */
+    .completion-banner {
+      font-size: 32px;
+      font-weight: 700;
+      color: var(--link-low);
+      text-align: center;
+      padding: 15px;
+      background: rgba(0, 230, 118, 0.1);
+      border: 2px solid var(--link-low);
+      border-radius: 12px;
+      animation: fadeInUp 0.8s ease-in-out;
+    }
+  </style>
+</head>
+<body>
+  <div class="reveal">
+    <div class="slides">
+
+      <!-- ===== Slide 1: Title ===== -->
+      <section class="title-slide">
+        <svg class="bg-network" id="bg-network"></svg>
+        <div class="title-content">
+          <h1>AIがネットワークの<br>"渋滞"を解消する</h1>
+          <p class="slide-subtitle">グラフニューラルネットワークによるネットワーク負荷分散</p>
+          <p class="slide-author">長田翔太<br>創価大学大学院 理工学研究科<br>2026</p>
+        </div>
+      </section>
+
+      <!-- ===== Slide 2: Problem + Interactive Demo ===== -->
+      <section>
+        <div class="slide-intro">
+          道路と同じように、インターネットにも<strong>"渋滞"</strong>がある<br>
+          ネットワーク = 拠点（ノード）+ 回線（リンク）。各リンクには容量がある<br>
+          複数の「データの流れ」がそれぞれ出発地→目的地へ向かう<br>
+          目標: <span class="highlight">一番混んでいるリンクの混み具合を最小にする</span><br>
+          <span style="font-size:18px;color:#aaa;">組み合わせが膨大すぎて、人間やふつうの計算では解けない → AIの出番！</span>
+        </div>
+        <div class="meter-container">
+          <div class="meter-label" id="slide2-meter-label">最大混雑度: ---</div>
+          <svg id="slide2-meter" width="600" height="30" style="display:block;margin:0 auto;"></svg>
+        </div>
+        <div style="text-align:center;">
+          <svg id="slide2-graph" width="800" height="340" style="display:block;margin:0 auto;"></svg>
+        </div>
+        <div class="btn-group">
+          <button class="demo-btn active" id="btn-shortest">最短ルートで配分</button>
+          <button class="demo-btn accent" id="btn-balanced">バランスよく配分</button>
+        </div>
+      </section>
+
+      <!-- ===== Slide 3: GCN / Message Passing ===== -->
+      <section>
+        <div class="slide-intro">
+          <strong>AIはノード同士で情報を交換しあって、ネットワーク全体の状況を理解する</strong><br>
+          各拠点が隣の拠点と"井戸端会議"をする。<br>何回も繰り返すと、遠くの拠点の情報も伝わってくる
+        </div>
+        <div style="text-align:center;">
+          <svg id="slide3-graph" width="840" height="380" style="display:block;margin:0 auto;"></svg>
+        </div>
+        <div class="btn-group">
+          <button class="demo-btn" id="btn-propagate">1回伝達</button>
+          <span id="layer-label" style="font-size:20px;line-height:44px;color:var(--accent-cyan);font-weight:700;">現在: Layer 0 / 3</span>
+        </div>
+        <div class="hover-hint">ノードをホバー → そのノードが知っている範囲をハイライト</div>
+      </section>
+
+      <!-- ===== Slide 4: GNN-ILS Improvement Steps ===== -->
+      <section>
+        <div class="meter-container">
+          <div class="meter-label" id="slide4-meter-label">Step: 0/5　混雑度: 135%</div>
+          <svg id="slide4-meter" width="600" height="30" style="display:block;margin:0 auto;"></svg>
+        </div>
+        <div style="text-align:center;">
+          <svg id="slide4-graph" width="840" height="340" style="display:block;margin:0 auto;"></svg>
+        </div>
+        <div class="btn-group">
+          <button class="demo-btn" id="btn-prev" disabled>< 前へ</button>
+          <button class="demo-btn accent" id="btn-next">次のステップ ></button>
+          <button class="demo-btn" id="btn-autoplay">自動再生</button>
+          <button class="demo-btn" id="btn-reset">リセット</button>
+        </div>
+        <div class="step-description" id="step-description">
+          初期状態: 全てのデータが最短ルートを使用中。大渋滞！
+        </div>
+      </section>
+
+      <!-- ===== Slide 5: Results ===== -->
+      <section>
+        <div class="result-message">
+          AIは理想の答えの 88〜96% の精度を、1秒以下で出せる
+        </div>
+        <div class="result-comparison">
+          コンピュータで全探索: 大規模だと<span style="color:var(--link-high);font-weight:700;">数時間〜終わらない</span><br>
+          AIの提案: <span style="color:var(--link-low);font-weight:700;">1秒以下</span>
+        </div>
+        <div style="text-align:center;">
+          <svg id="slide5-chart" width="700" height="340" style="display:block;margin:0 auto;"></svg>
+        </div>
+        <div class="result-closing">
+          5G・IoT時代、ネットワークはもっと複雑になる。AIの力がますます必要に！
+        </div>
+      </section>
+
+    </div>
+  </div>
+
+  <!-- Reveal.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/5.1.0/reveal.min.js"></script>
+  <script>
+  // ============================================================
+  // Global Data
+  // ============================================================
+
+  const NSFNET = {
+    nodes: [
+      { id: 0,  label: "WA",  x: 100, y: 100 },
+      { id: 1,  label: "CA1", x: 60,  y: 250 },
+      { id: 2,  label: "CA2", x: 80,  y: 350 },
+      { id: 3,  label: "UT",  x: 220, y: 200 },
+      { id: 4,  label: "CO",  x: 300, y: 250 },
+      { id: 5,  label: "TX",  x: 380, y: 400 },
+      { id: 6,  label: "NE",  x: 400, y: 180 },
+      { id: 7,  label: "IL",  x: 500, y: 200 },
+      { id: 8,  label: "MI",  x: 580, y: 140 },
+      { id: 9,  label: "GA",  x: 580, y: 350 },
+      { id: 10, label: "PA",  x: 680, y: 180 },
+      { id: 11, label: "NY",  x: 740, y: 120 },
+      { id: 12, label: "NJ",  x: 720, y: 220 },
+      { id: 13, label: "DC",  x: 680, y: 300 },
+    ],
+    edges: [
+      { source: 0, target: 1, capacity: 10 },
+      { source: 0, target: 3, capacity: 10 },
+      { source: 0, target: 8, capacity: 10 },
+      { source: 1, target: 2, capacity: 10 },
+      { source: 1, target: 3, capacity: 10 },
+      { source: 2, target: 5, capacity: 10 },
+      { source: 3, target: 4, capacity: 10 },
+      { source: 3, target: 6, capacity: 10 },
+      { source: 4, target: 5, capacity: 10 },
+      { source: 4, target: 6, capacity: 10 },
+      { source: 5, target: 9, capacity: 10 },
+      { source: 5, target: 13, capacity: 10 },
+      { source: 6, target: 7, capacity: 10 },
+      { source: 7, target: 8, capacity: 10 },
+      { source: 7, target: 9, capacity: 10 },
+      { source: 7, target: 10, capacity: 10 },
+      { source: 8, target: 11, capacity: 10 },
+      { source: 9, target: 12, capacity: 10 },
+      { source: 9, target: 13, capacity: 10 },
+      { source: 10, target: 11, capacity: 10 },
+      { source: 10, target: 12, capacity: 10 },
+    ],
+  };
+
+  const demoSmall = {
+    nodes: [
+      { id: 0, label: "A", x: 100, y: 170 },
+      { id: 1, label: "B", x: 280, y: 60 },
+      { id: 2, label: "C", x: 280, y: 280 },
+      { id: 3, label: "D", x: 480, y: 60 },
+      { id: 4, label: "E", x: 480, y: 280 },
+      { id: 5, label: "F", x: 680, y: 170 },
+    ],
+    edges: [
+      { source: 0, target: 1, capacity: 10 },
+      { source: 0, target: 2, capacity: 10 },
+      { source: 1, target: 2, capacity: 10 },
+      { source: 1, target: 3, capacity: 10 },
+      { source: 1, target: 4, capacity: 10 },
+      { source: 2, target: 4, capacity: 10 },
+      { source: 3, target: 5, capacity: 10 },
+      { source: 4, target: 5, capacity: 10 },
+      { source: 3, target: 4, capacity: 10 },
+    ],
+    commodities: [
+      { id: 0, src: 0, dst: 5, demand: 4, color: "#e74c3c" },
+      { id: 1, src: 0, dst: 3, demand: 5, color: "#3498db" },
+      { id: 2, src: 2, dst: 5, demand: 4, color: "#2ecc71" },
+    ],
+    shortestPaths: [
+      [0, 1, 3, 5],
+      [0, 1, 3],
+      [2, 4, 5],
+    ],
+    balancedPaths: [
+      [0, 2, 4, 5],
+      [0, 1, 3],
+      [2, 4, 5],
+    ],
+  };
+
+  const improvementSteps = [
+    {
+      step: 0,
+      description: "初期状態: 全てのデータが最短ルートを使用中。リンク UT→NE と NE→IL に集中して大渋滞！",
+      maxUtil: 1.35,
+      flows: [
+        { id: 0, color: "#e74c3c", label: "データ1", path: [0, 3, 6, 7, 10, 11], demand: 3 },
+        { id: 1, color: "#3498db", label: "データ2", path: [1, 3, 6, 7, 8],      demand: 4 },
+        { id: 2, color: "#2ecc71", label: "データ3", path: [2, 5, 9, 13],        demand: 3 },
+        { id: 3, color: "#f39c12", label: "データ4", path: [0, 3, 4, 5, 9, 12],  demand: 2 },
+        { id: 4, color: "#9b59b6", label: "データ5", path: [1, 3, 6, 7, 10, 12], demand: 3 },
+      ],
+      changedFlow: null,
+    },
+    {
+      step: 1,
+      description: "AIが観察: 「UT→NE が超混雑！」\nデータ5（紫）のルートを南回りに変更",
+      maxUtil: 1.05,
+      flows: [
+        { id: 0, color: "#e74c3c", label: "データ1", path: [0, 3, 6, 7, 10, 11], demand: 3 },
+        { id: 1, color: "#3498db", label: "データ2", path: [1, 3, 6, 7, 8],      demand: 4 },
+        { id: 2, color: "#2ecc71", label: "データ3", path: [2, 5, 9, 13],        demand: 3 },
+        { id: 3, color: "#f39c12", label: "データ4", path: [0, 3, 4, 5, 9, 12],  demand: 2 },
+        { id: 4, color: "#9b59b6", label: "データ5", path: [1, 2, 5, 9, 12],     demand: 3 },
+      ],
+      changedFlow: { id: 4, oldPath: [1, 3, 6, 7, 10, 12] },
+    },
+    {
+      step: 2,
+      description: "AIが観察: 「まだ NE→IL が混んでる」\nデータ1（赤）を東海岸経由に変更",
+      maxUtil: 0.90,
+      flows: [
+        { id: 0, color: "#e74c3c", label: "データ1", path: [0, 8, 11],           demand: 3 },
+        { id: 1, color: "#3498db", label: "データ2", path: [1, 3, 6, 7, 8],      demand: 4 },
+        { id: 2, color: "#2ecc71", label: "データ3", path: [2, 5, 9, 13],        demand: 3 },
+        { id: 3, color: "#f39c12", label: "データ4", path: [0, 3, 4, 5, 9, 12],  demand: 2 },
+        { id: 4, color: "#9b59b6", label: "データ5", path: [1, 2, 5, 9, 12],     demand: 3 },
+      ],
+      changedFlow: { id: 0, oldPath: [0, 3, 6, 7, 10, 11] },
+    },
+    {
+      step: 3,
+      description: "AIが観察: 「TX→GA に少し集中」\nデータ4（橙）を北回りに変更",
+      maxUtil: 0.82,
+      flows: [
+        { id: 0, color: "#e74c3c", label: "データ1", path: [0, 8, 11],           demand: 3 },
+        { id: 1, color: "#3498db", label: "データ2", path: [1, 3, 6, 7, 8],      demand: 4 },
+        { id: 2, color: "#2ecc71", label: "データ3", path: [2, 5, 9, 13],        demand: 3 },
+        { id: 3, color: "#f39c12", label: "データ4", path: [0, 3, 6, 7, 9, 12],  demand: 2 },
+        { id: 4, color: "#9b59b6", label: "データ5", path: [1, 2, 5, 9, 12],     demand: 3 },
+      ],
+      changedFlow: { id: 3, oldPath: [0, 3, 4, 5, 9, 12] },
+    },
+    {
+      step: 4,
+      description: "AIが微調整: データ2（青）を少し迂回させてさらに分散",
+      maxUtil: 0.75,
+      flows: [
+        { id: 0, color: "#e74c3c", label: "データ1", path: [0, 8, 11],           demand: 3 },
+        { id: 1, color: "#3498db", label: "データ2", path: [1, 3, 4, 6, 7, 8],   demand: 4 },
+        { id: 2, color: "#2ecc71", label: "データ3", path: [2, 5, 9, 13],        demand: 3 },
+        { id: 3, color: "#f39c12", label: "データ4", path: [0, 3, 6, 7, 9, 12],  demand: 2 },
+        { id: 4, color: "#9b59b6", label: "データ5", path: [1, 2, 5, 9, 12],     demand: 3 },
+      ],
+      changedFlow: { id: 1, oldPath: [1, 3, 6, 7, 8] },
+    },
+    {
+      step: 5,
+      description: "完了！ 混雑度が 135% → 75% に改善。全リンクが容量内に収まりました！",
+      maxUtil: 0.75,
+      flows: null,
+      changedFlow: null,
+    },
+  ];
+
+  const resultsData = [
+    { label: "5",  value: 89.2 },
+    { label: "10", value: 96.4 },
+    { label: "15", value: 89.8 },
+    { label: "20", value: 88.2 },
+    { label: "25", value: 87.6 },
+  ];
+
+  // ============================================================
+  // Utility Functions
+  // ============================================================
+
+  function edgeKey(s, t) {
+    return Math.min(s, t) + "-" + Math.max(s, t);
+  }
+
+  function utilColor(u) {
+    return d3.interpolateRdYlGn(1 - Math.min(u, 1.5) / 1.5);
+  }
+
+  function utilWidth(u) {
+    return 2 + Math.min(u, 1.5) * 8;
+  }
+
+  function meterColor(u) {
+    if (u <= 0.7) return "#00e676";
+    if (u <= 1.0) return "#ffeb3b";
+    return "#ff1744";
+  }
+
+  function computeEdgeLoads(flows, edges) {
+    const loads = {};
+    edges.forEach(e => { loads[edgeKey(e.source, e.target)] = 0; });
+    flows.forEach(f => {
+      for (let i = 0; i < f.path.length - 1; i++) {
+        const k = edgeKey(f.path[i], f.path[i + 1]);
+        if (loads[k] !== undefined) loads[k] += f.demand;
+      }
+    });
+    return loads;
+  }
+
+  function drawMeter(svgId, util, maxScale) {
+    maxScale = maxScale || 1.5;
+    const svg = d3.select("#" + svgId);
+    svg.selectAll("*").remove();
+    const w = +svg.attr("width"), h = +svg.attr("height");
+    const barW = w - 20;
+
+    // Background
+    svg.append("rect").attr("x", 10).attr("y", 5).attr("width", barW).attr("height", h - 10)
+      .attr("rx", 5).attr("fill", "#1a1a3a");
+
+    // Value bar
+    const valW = Math.max(0, Math.min(util / maxScale, 1)) * barW;
+    svg.append("rect").attr("x", 10).attr("y", 5).attr("width", 0).attr("height", h - 10)
+      .attr("rx", 5).attr("fill", meterColor(util))
+      .transition().duration(800).ease(d3.easeCubicInOut)
+      .attr("width", valW);
+
+    // 100% line
+    const x100 = 10 + (1.0 / maxScale) * barW;
+    svg.append("line").attr("x1", x100).attr("x2", x100).attr("y1", 0).attr("y2", h)
+      .attr("stroke", "#ff1744").attr("stroke-width", 2).attr("stroke-dasharray", "4,2");
+    svg.append("text").attr("x", x100).attr("y", h - 1).attr("text-anchor", "middle")
+      .attr("fill", "#ff1744").attr("font-size", 10).text("限界");
+  }
+
+  // ============================================================
+  // Slide 1: Background Network Animation
+  // ============================================================
+
+  function initSlide1() {
+    const svg = d3.select("#bg-network");
+    const w = window.innerWidth, h = window.innerHeight;
+    svg.attr("width", w).attr("height", h);
+
+    // Simple NSFNET silhouette scaled to full screen
+    const scaleX = w / 840, scaleY = h / 500;
+    const nodes = NSFNET.nodes.map(n => ({
+      ...n, sx: n.x * scaleX, sy: n.y * scaleY
+    }));
+    const nodeMap = {};
+    nodes.forEach(n => { nodeMap[n.id] = n; });
+
+    NSFNET.edges.forEach(e => {
+      svg.append("line")
+        .attr("x1", nodeMap[e.source].sx).attr("y1", nodeMap[e.source].sy)
+        .attr("x2", nodeMap[e.target].sx).attr("y2", nodeMap[e.target].sy)
+        .attr("stroke", "#1a2040").attr("stroke-width", 1);
+    });
+
+    nodes.forEach(n => {
+      svg.append("circle")
+        .attr("cx", n.sx).attr("cy", n.sy).attr("r", 4)
+        .attr("fill", "#2a3060").attr("opacity", 0.3)
+        .style("animation-delay", (Math.random() * 3) + "s");
+    });
+  }
+
+  // ============================================================
+  // Slide 2: Problem Demo
+  // ============================================================
+
+  let slide2Packets = [];
+  let slide2PacketTimer = null;
+  let slide2Mode = "shortest";
+
+  function initSlide2() {
+    const svg = d3.select("#slide2-graph");
+    svg.selectAll("*").remove();
+    const data = demoSmall;
+    const nodeMap = {};
+    data.nodes.forEach(n => { nodeMap[n.id] = n; });
+
+    // Scale nodes to fit SVG
+    const svgW = +svg.attr("width"), svgH = +svg.attr("height");
+    const sx = svgW / 800, sy = svgH / 380;
+    data.nodes.forEach(n => { n.sx = n.x * sx + 20; n.sy = n.y * sy + 10; });
+
+    // Draw edges
+    const edgeGroup = svg.append("g").attr("class", "edges");
+    data.edges.forEach(e => {
+      edgeGroup.append("line")
+        .attr("class", "edge")
+        .attr("data-key", edgeKey(e.source, e.target))
+        .attr("x1", nodeMap[e.source].sx).attr("y1", nodeMap[e.source].sy)
+        .attr("x2", nodeMap[e.target].sx).attr("y2", nodeMap[e.target].sy)
+        .attr("stroke", "#00e676").attr("stroke-width", 3)
+        .attr("stroke-linecap", "round");
+    });
+
+    // Packet layer
+    svg.append("g").attr("class", "packets");
+
+    // Draw nodes
+    const nodeGroup = svg.append("g").attr("class", "nodes");
+    data.nodes.forEach(n => {
+      // Check if this node is src or dst for any commodity
+      const comRings = data.commodities.filter(c => c.src === n.id || c.dst === n.id);
+      comRings.forEach((c, i) => {
+        nodeGroup.append("circle")
+          .attr("cx", n.sx).attr("cy", n.sy).attr("r", 22 + i * 5)
+          .attr("fill", "none").attr("stroke", c.color).attr("stroke-width", 2.5)
+          .attr("opacity", 0.7);
+      });
+
+      nodeGroup.append("circle")
+        .attr("cx", n.sx).attr("cy", n.sy).attr("r", 18)
+        .attr("fill", "#4fc3f7").attr("stroke", "#0a0e27").attr("stroke-width", 2);
+      nodeGroup.append("text")
+        .attr("x", n.sx).attr("y", n.sy + 5)
+        .attr("text-anchor", "middle").attr("fill", "#0a0e27")
+        .attr("font-size", 14).attr("font-weight", 700)
+        .text(n.label);
+    });
+
+    updateSlide2("shortest");
+  }
+
+  function updateSlide2(mode) {
+    slide2Mode = mode;
+    const data = demoSmall;
+    const nodeMap = {};
+    data.nodes.forEach(n => { nodeMap[n.id] = n; });
+
+    const paths = mode === "shortest" ? data.shortestPaths : data.balancedPaths;
+
+    // Compute edge loads
+    const loads = {};
+    data.edges.forEach(e => { loads[edgeKey(e.source, e.target)] = 0; });
+    data.commodities.forEach((c, i) => {
+      const p = paths[i];
+      for (let j = 0; j < p.length - 1; j++) {
+        const k = edgeKey(p[j], p[j + 1]);
+        loads[k] += c.demand;
+      }
+    });
+
+    // Max utilization
+    let maxUtil = 0;
+    data.edges.forEach(e => {
+      const k = edgeKey(e.source, e.target);
+      const u = loads[k] / e.capacity;
+      if (u > maxUtil) maxUtil = u;
+    });
+
+    // Update edges
+    const svg = d3.select("#slide2-graph");
+    data.edges.forEach(e => {
+      const k = edgeKey(e.source, e.target);
+      const u = loads[k] / e.capacity;
+      svg.select(`line[data-key="${k}"]`)
+        .transition().duration(800).ease(d3.easeCubicInOut)
+        .attr("stroke", utilColor(u))
+        .attr("stroke-width", utilWidth(u));
+    });
+
+    // Update meter
+    drawMeter("slide2-meter", maxUtil);
+    const pct = Math.round(maxUtil * 100);
+    d3.select("#slide2-meter-label").text("最大混雑度: " + pct + "%")
+      .style("color", meterColor(maxUtil));
+
+    // Buttons
+    d3.select("#btn-shortest").classed("active", mode === "shortest");
+    d3.select("#btn-balanced").classed("active", mode === "balanced");
+
+    // Start packet animation
+    startSlide2Packets(paths);
+  }
+
+  function startSlide2Packets(paths) {
+    if (slide2PacketTimer) clearInterval(slide2PacketTimer);
+    const data = demoSmall;
+    const nodeMap = {};
+    data.nodes.forEach(n => { nodeMap[n.id] = n; });
+    const svg = d3.select("#slide2-graph .packets");
+
+    function spawnPackets() {
+      data.commodities.forEach((c, i) => {
+        const p = paths[i];
+        const totalDur = 2000;
+        const segDur = totalDur / (p.length - 1);
+
+        const pkt = svg.append("circle")
+          .attr("cx", nodeMap[p[0]].sx).attr("cy", nodeMap[p[0]].sy)
+          .attr("r", 5).attr("fill", c.color).attr("opacity", 0.9);
+
+        let chain = pkt;
+        for (let j = 1; j < p.length; j++) {
+          chain = chain.transition().duration(segDur).ease(d3.easeLinear)
+            .attr("cx", nodeMap[p[j]].sx).attr("cy", nodeMap[p[j]].sy);
+        }
+        chain.transition().duration(200).attr("opacity", 0).remove();
+      });
+    }
+
+    spawnPackets();
+    slide2PacketTimer = setInterval(spawnPackets, 2500);
+  }
+
+  function stopSlide2Packets() {
+    if (slide2PacketTimer) { clearInterval(slide2PacketTimer); slide2PacketTimer = null; }
+    d3.select("#slide2-graph .packets").selectAll("*").remove();
+  }
+
+  // ============================================================
+  // Slide 3: Message Passing Visualization
+  // ============================================================
+
+  let slide3Layer = 0;
+  const slide3MaxLayer = 3;
+  let slide3AdjList = {};
+
+  function initSlide3() {
+    slide3Layer = 0;
+    const svg = d3.select("#slide3-graph");
+    svg.selectAll("*").remove();
+
+    const svgW = +svg.attr("width"), svgH = +svg.attr("height");
+    const sx = svgW / 840, sy = svgH / 460;
+
+    const nodes = NSFNET.nodes.map(n => ({
+      ...n, sx: n.x * sx + 20, sy: n.y * sy + 10
+    }));
+    const nodeMap = {};
+    nodes.forEach(n => { nodeMap[n.id] = n; });
+
+    // Build adjacency list
+    slide3AdjList = {};
+    NSFNET.nodes.forEach(n => { slide3AdjList[n.id] = []; });
+    NSFNET.edges.forEach(e => {
+      slide3AdjList[e.source].push(e.target);
+      slide3AdjList[e.target].push(e.source);
+    });
+
+    // Draw edges
+    const edgeGroup = svg.append("g").attr("class", "edges");
+    NSFNET.edges.forEach(e => {
+      edgeGroup.append("line")
+        .attr("class", "edge3")
+        .attr("data-src", e.source).attr("data-tgt", e.target)
+        .attr("x1", nodeMap[e.source].sx).attr("y1", nodeMap[e.source].sy)
+        .attr("x2", nodeMap[e.target].sx).attr("y2", nodeMap[e.target].sy)
+        .attr("stroke", "#2a3060").attr("stroke-width", 2);
+    });
+
+    // Message layer
+    svg.append("g").attr("class", "messages");
+
+    // Draw nodes
+    const nodeGroup = svg.append("g").attr("class", "nodes");
+    nodes.forEach(n => {
+      nodeGroup.append("circle")
+        .attr("class", "node3")
+        .attr("data-id", n.id)
+        .attr("cx", n.sx).attr("cy", n.sy)
+        .attr("r", 10)
+        .attr("fill", d3.interpolateBlues(0.15))
+        .attr("stroke", "#4fc3f7").attr("stroke-width", 1.5)
+        .attr("cursor", "pointer")
+        .on("mouseover", function() { highlightHop(n.id); })
+        .on("mouseout", function() { resetHighlight(); });
+      nodeGroup.append("text")
+        .attr("x", n.sx).attr("y", n.sy + 4)
+        .attr("text-anchor", "middle").attr("fill", "#fff")
+        .attr("font-size", 11).attr("font-weight", 700)
+        .attr("pointer-events", "none")
+        .text(n.label);
+    });
+
+    updateSlide3Label();
+  }
+
+  function propagateOnce() {
+    if (slide3Layer >= slide3MaxLayer) return;
+    slide3Layer++;
+
+    const svg = d3.select("#slide3-graph");
+    const nodeMap = {};
+    NSFNET.nodes.forEach(n => { nodeMap[n.id] = n; });
+    const svgW = +svg.attr("width"), svgH = +svg.attr("height");
+    const sx = svgW / 840, sy = svgH / 460;
+
+    // Animate messages along edges
+    const msgGroup = svg.select(".messages");
+    NSFNET.edges.forEach(e => {
+      const s = nodeMap[e.source], t = nodeMap[e.target];
+      // Both directions
+      [[s, t], [t, s]].forEach(([from, to]) => {
+        msgGroup.append("circle")
+          .attr("cx", from.x * sx + 20).attr("cy", from.y * sy + 10)
+          .attr("r", 4).attr("fill", "#00d4ff").attr("opacity", 0.9)
+          .transition().duration(800).ease(d3.easeCubicInOut)
+          .attr("cx", to.x * sx + 20).attr("cy", to.y * sy + 10)
+          .transition().duration(200).attr("opacity", 0).remove();
+      });
+    });
+
+    // Update node sizes and colors after messages arrive
+    setTimeout(() => {
+      const layer = slide3Layer;
+      svg.selectAll(".node3")
+        .transition().duration(500).ease(d3.easeCubicInOut)
+        .attr("r", 10 + layer * 5)
+        .attr("fill", d3.interpolateBlues(0.15 + layer * 0.25));
+    }, 850);
+
+    updateSlide3Label();
+  }
+
+  function updateSlide3Label() {
+    d3.select("#layer-label").text("現在: Layer " + slide3Layer + " / " + slide3MaxLayer);
+    d3.select("#btn-propagate").property("disabled", slide3Layer >= slide3MaxLayer);
+  }
+
+  function highlightHop(nodeId) {
+    // BFS to find nodes within slide3Layer hops
+    const visited = new Set();
+    let frontier = [nodeId];
+    visited.add(nodeId);
+    for (let i = 0; i < slide3Layer; i++) {
+      const next = [];
+      frontier.forEach(nid => {
+        (slide3AdjList[nid] || []).forEach(nbr => {
+          if (!visited.has(nbr)) { visited.add(nbr); next.push(nbr); }
+        });
+      });
+      frontier = next;
+    }
+
+    d3.selectAll(".node3").transition().duration(300)
+      .attr("opacity", function() {
+        return visited.has(+d3.select(this).attr("data-id")) ? 1 : 0.15;
+      });
+    d3.selectAll(".edge3").transition().duration(300)
+      .attr("opacity", function() {
+        const s = +d3.select(this).attr("data-src");
+        const t = +d3.select(this).attr("data-tgt");
+        return (visited.has(s) && visited.has(t)) ? 1 : 0.1;
+      });
+  }
+
+  function resetHighlight() {
+    d3.selectAll(".node3").transition().duration(300).attr("opacity", 1);
+    d3.selectAll(".edge3").transition().duration(300).attr("opacity", 1);
+  }
+
+  // ============================================================
+  // Slide 4: Improvement Steps
+  // ============================================================
+
+  let slide4Step = 0;
+  let slide4AutoTimer = null;
+  let slide4PacketTimer = null;
+
+  function initSlide4() {
+    slide4Step = 0;
+    stopSlide4Auto();
+    const svg = d3.select("#slide4-graph");
+    svg.selectAll("*").remove();
+
+    const svgW = +svg.attr("width"), svgH = +svg.attr("height");
+    const sx = svgW / 840, sy = svgH / 460;
+
+    const nodes = NSFNET.nodes.map(n => ({
+      ...n, sx: n.x * sx + 20, sy: n.y * sy + 10
+    }));
+    const nodeMap = {};
+    nodes.forEach(n => { nodeMap[n.id] = n; });
+
+    // Draw edges
+    const edgeGroup = svg.append("g").attr("class", "edges4");
+    NSFNET.edges.forEach(e => {
+      edgeGroup.append("line")
+        .attr("class", "edge4")
+        .attr("data-key", edgeKey(e.source, e.target))
+        .attr("x1", nodeMap[e.source].sx).attr("y1", nodeMap[e.source].sy)
+        .attr("x2", nodeMap[e.target].sx).attr("y2", nodeMap[e.target].sy)
+        .attr("stroke", "#2a3060").attr("stroke-width", 2)
+        .attr("stroke-linecap", "round");
+    });
+
+    // Old path layer (dashed lines for previous route)
+    svg.append("g").attr("class", "oldpaths");
+    // Packet layer
+    svg.append("g").attr("class", "packets4");
+
+    // Draw nodes
+    const nodeGroup = svg.append("g").attr("class", "nodes4");
+    nodes.forEach(n => {
+      nodeGroup.append("circle")
+        .attr("cx", n.sx).attr("cy", n.sy).attr("r", 14)
+        .attr("fill", "#4fc3f7").attr("stroke", "#0a0e27").attr("stroke-width", 2);
+      nodeGroup.append("text")
+        .attr("x", n.sx).attr("y", n.sy + 4)
+        .attr("text-anchor", "middle").attr("fill", "#0a0e27")
+        .attr("font-size", 11).attr("font-weight", 700)
+        .text(n.label);
+    });
+
+    renderSlide4Step(0, false);
+  }
+
+  function renderSlide4Step(step, animate) {
+    const stepData = improvementSteps[step];
+    const flows = stepData.flows || improvementSteps[step - 1].flows;
+    const svg = d3.select("#slide4-graph");
+    const svgW = +svg.attr("width"), svgH = +svg.attr("height");
+    const sx = svgW / 840, sy = svgH / 460;
+    const nodeMap = {};
+    NSFNET.nodes.forEach(n => { nodeMap[n.id] = { ...n, sx: n.x * sx + 20, sy: n.y * sy + 10 }; });
+    const dur = animate ? 1000 : 0;
+
+    // Compute loads
+    const loads = computeEdgeLoads(flows, NSFNET.edges);
+
+    // Update edges
+    NSFNET.edges.forEach(e => {
+      const k = edgeKey(e.source, e.target);
+      const u = loads[k] / e.capacity;
+      const sel = svg.select(`.edge4[data-key="${k}"]`);
+      const w = utilWidth(u);
+      if (animate) {
+        sel.transition().duration(dur).ease(d3.easeCubicInOut)
+          .attr("stroke", utilColor(u)).attr("stroke-width", w);
+      } else {
+        sel.attr("stroke", utilColor(u)).attr("stroke-width", w);
+      }
+      // Pulsing for overloaded
+      if (u > 1.0) {
+        sel.classed("link-overloaded", true).style("--base-width", w + "px");
+      } else {
+        sel.classed("link-overloaded", false);
+      }
+    });
+
+    // Show old path if changed
+    const oldPathGroup = svg.select(".oldpaths");
+    oldPathGroup.selectAll("*").remove();
+    if (animate && stepData.changedFlow) {
+      const cf = stepData.changedFlow;
+      const oldP = cf.oldPath;
+      for (let i = 0; i < oldP.length - 1; i++) {
+        const s = nodeMap[oldP[i]], t = nodeMap[oldP[i + 1]];
+        oldPathGroup.append("line")
+          .attr("x1", s.sx).attr("y1", s.sy)
+          .attr("x2", t.sx).attr("y2", t.sy)
+          .attr("stroke", flows[cf.id].color).attr("stroke-width", 3)
+          .attr("stroke-dasharray", "6,4").attr("opacity", 0.7)
+          .transition().duration(1200).attr("opacity", 0).remove();
+      }
+    }
+
+    // Update meter
+    drawMeter("slide4-meter", stepData.maxUtil);
+    const pct = Math.round(stepData.maxUtil * 100);
+    d3.select("#slide4-meter-label").text("Step: " + step + "/5　混雑度: " + pct + "%")
+      .style("color", meterColor(stepData.maxUtil));
+
+    // Update description
+    const descEl = d3.select("#step-description");
+    if (step === 5) {
+      descEl.html("").append("div").attr("class", "completion-banner")
+        .text(stepData.description);
+    } else {
+      descEl.text(stepData.description);
+    }
+
+    // Buttons
+    d3.select("#btn-prev").property("disabled", step <= 0);
+    d3.select("#btn-next").property("disabled", step >= 5);
+
+    // Packets
+    startSlide4Packets(flows);
+  }
+
+  function startSlide4Packets(flows) {
+    if (slide4PacketTimer) clearInterval(slide4PacketTimer);
+    const svg = d3.select("#slide4-graph");
+    const pktGroup = svg.select(".packets4");
+    pktGroup.selectAll("*").remove();
+
+    const svgW = +svg.attr("width"), svgH = +svg.attr("height");
+    const sx = svgW / 840, sy = svgH / 460;
+    const nodeMap = {};
+    NSFNET.nodes.forEach(n => { nodeMap[n.id] = { sx: n.x * sx + 20, sy: n.y * sy + 10 }; });
+
+    function spawn() {
+      flows.forEach(f => {
+        const p = f.path;
+        const totalDur = 2000;
+        const segDur = totalDur / (p.length - 1);
+        const pkt = pktGroup.append("circle")
+          .attr("cx", nodeMap[p[0]].sx).attr("cy", nodeMap[p[0]].sy)
+          .attr("r", 4).attr("fill", f.color).attr("opacity", 0.85);
+        let chain = pkt;
+        for (let j = 1; j < p.length; j++) {
+          chain = chain.transition().duration(segDur).ease(d3.easeLinear)
+            .attr("cx", nodeMap[p[j]].sx).attr("cy", nodeMap[p[j]].sy);
+        }
+        chain.transition().duration(200).attr("opacity", 0).remove();
+      });
+    }
+    spawn();
+    slide4PacketTimer = setInterval(spawn, 2500);
+  }
+
+  function stopSlide4Packets() {
+    if (slide4PacketTimer) { clearInterval(slide4PacketTimer); slide4PacketTimer = null; }
+    d3.select(".packets4").selectAll("*").remove();
+  }
+
+  function stopSlide4Auto() {
+    if (slide4AutoTimer) { clearInterval(slide4AutoTimer); slide4AutoTimer = null; }
+    d3.select("#btn-autoplay").classed("active", false).text("自動再生");
+  }
+
+  // ============================================================
+  // Slide 5: Results Bar Chart
+  // ============================================================
+
+  let slide5Drawn = false;
+
+  function initSlide5() {
+    if (slide5Drawn) return;
+    slide5Drawn = true;
+
+    const svg = d3.select("#slide5-chart");
+    const svgW = +svg.attr("width"), svgH = +svg.attr("height");
+    const margin = { top: 30, right: 40, bottom: 60, left: 80 };
+    const w = svgW - margin.left - margin.right;
+    const h = svgH - margin.top - margin.bottom;
+
+    const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+    const x = d3.scaleBand().domain(resultsData.map(d => d.label)).range([0, w]).padding(0.35);
+    const y = d3.scaleLinear().domain([78, 100]).range([h, 0]);
+
+    // Grid lines
+    g.append("g").attr("class", "grid")
+      .selectAll("line")
+      .data([80, 85, 90, 95, 100])
+      .enter().append("line")
+      .attr("x1", 0).attr("x2", w)
+      .attr("y1", d => y(d)).attr("y2", d => y(d))
+      .attr("stroke", "#1a2040").attr("stroke-width", 1);
+
+    // 80% baseline
+    g.append("line")
+      .attr("x1", 0).attr("x2", w)
+      .attr("y1", y(80)).attr("y2", y(80))
+      .attr("stroke", "rgba(255,255,255,0.3)").attr("stroke-width", 1).attr("stroke-dasharray", "4,3");
+    g.append("text").attr("x", w + 5).attr("y", y(80) + 4)
+      .attr("fill", "#888").attr("font-size", 12).text("80%");
+
+    // X axis
+    g.append("g").attr("transform", `translate(0,${h})`)
+      .call(d3.axisBottom(x).tickSize(0))
+      .selectAll("text").attr("fill", "#ccc").attr("font-size", 14);
+    g.append("text").attr("x", w / 2).attr("y", h + 45)
+      .attr("text-anchor", "middle").attr("fill", "#aaa").attr("font-size", 16)
+      .text("データの流れの数");
+
+    // Y axis
+    g.append("g")
+      .call(d3.axisLeft(y).ticks(5).tickFormat(d => d + "%"))
+      .selectAll("text").attr("fill", "#ccc").attr("font-size", 13);
+    g.append("text").attr("x", -h / 2).attr("y", -55)
+      .attr("text-anchor", "middle").attr("fill", "#aaa").attr("font-size", 16)
+      .attr("transform", "rotate(-90)").text("理想への近さ（%）");
+
+    // Remove axis lines
+    g.selectAll(".domain").attr("stroke", "#333");
+    g.selectAll(".tick line").attr("stroke", "#333");
+
+    // Bars with stagger animation
+    g.selectAll(".bar")
+      .data(resultsData)
+      .enter().append("rect")
+      .attr("x", d => x(d.label))
+      .attr("y", h)
+      .attr("width", x.bandwidth())
+      .attr("height", 0)
+      .attr("fill", (d, i) => d3.interpolateCool(0.3 + i * 0.15))
+      .attr("rx", 4)
+      .transition().duration(1000).ease(d3.easeCubicOut)
+      .delay((d, i) => i * 200)
+      .attr("y", d => y(d.value))
+      .attr("height", d => h - y(d.value));
+
+    // Value labels
+    g.selectAll(".val-label")
+      .data(resultsData)
+      .enter().append("text")
+      .attr("x", d => x(d.label) + x.bandwidth() / 2)
+      .attr("y", d => y(d.value) - 8)
+      .attr("text-anchor", "middle")
+      .attr("fill", "#fff").attr("font-size", 16).attr("font-weight", 700)
+      .attr("opacity", 0)
+      .text(d => Math.round(d.value) + "%")
+      .transition().duration(600).delay((d, i) => 600 + i * 200)
+      .attr("opacity", 1);
+  }
+
+  // ============================================================
+  // Reveal.js Init & Event Handling
+  // ============================================================
+
+  Reveal.initialize({
+    hash: true,
+    width: 960,
+    height: 700,
+    margin: 0.04,
+    transition: 'slide',
+    transitionSpeed: 'default',
+    controls: true,
+    progress: true,
+    center: false,
+    keyboard: true,
+  });
+
+  // Init slide 1 background
+  initSlide1();
+
+  Reveal.on('slidechanged', event => {
+    const idx = event.indexh;
+
+    // Stop all animations from other slides
+    stopSlide2Packets();
+    stopSlide4Packets();
+
+    if (idx === 1) {
+      initSlide2();
+    } else if (idx === 2) {
+      initSlide3();
+    } else if (idx === 3) {
+      initSlide4();
+    } else if (idx === 4) {
+      initSlide5();
+    }
+  });
+
+  // Slide 2 buttons
+  document.getElementById("btn-shortest").addEventListener("click", () => updateSlide2("shortest"));
+  document.getElementById("btn-balanced").addEventListener("click", () => updateSlide2("balanced"));
+
+  // Slide 3 button
+  document.getElementById("btn-propagate").addEventListener("click", propagateOnce);
+
+  // Slide 4 buttons
+  document.getElementById("btn-next").addEventListener("click", () => {
+    if (slide4Step < 5) {
+      slide4Step++;
+      renderSlide4Step(slide4Step, true);
+    }
+  });
+
+  document.getElementById("btn-prev").addEventListener("click", () => {
+    if (slide4Step > 0) {
+      slide4Step--;
+      renderSlide4Step(slide4Step, true);
+    }
+  });
+
+  document.getElementById("btn-reset").addEventListener("click", () => {
+    stopSlide4Auto();
+    slide4Step = 0;
+    renderSlide4Step(0, false);
+  });
+
+  document.getElementById("btn-autoplay").addEventListener("click", function() {
+    if (slide4AutoTimer) {
+      stopSlide4Auto();
+    } else {
+      this.classList.add("active");
+      this.textContent = "停止";
+      slide4AutoTimer = setInterval(() => {
+        if (slide4Step < 5) {
+          slide4Step++;
+          renderSlide4Step(slide4Step, true);
+        } else {
+          stopSlide4Auto();
+        }
+      }, 2500);
+    }
+  });
+
+  </script>
+</body>
+</html>
